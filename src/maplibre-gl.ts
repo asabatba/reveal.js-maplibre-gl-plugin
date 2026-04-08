@@ -5,7 +5,6 @@ import {
   Map as MaplibreMap,
   type StyleSpecification,
 } from 'maplibre-gl';
-import 'maplibre-gl/dist/maplibre-gl.css';
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -43,6 +42,11 @@ export interface TrekSpec {
  */
 export type MapMode = 'slide' | 'fullpage';
 
+export interface SlideMapConfig extends MapPosition {
+  /** Optional per-slide override for the plugin's global layout mode. */
+  mode?: MapMode;
+}
+
 export interface PluginOptions {
   /** MapLibre style URL or inline style spec. Defaults to MapLibre demo tiles. */
   style?: string | StyleSpecification;
@@ -65,7 +69,6 @@ export interface PluginOptions {
 
 interface RevealSlide extends HTMLElement {
   maplibreMap?: MaplibreMap;
-  /** The DOM element that hosts the MapLibre canvas. */
   maplibreContainer?: HTMLDivElement;
 }
 
@@ -82,6 +85,7 @@ interface RevealApi {
   getConfig(): Record<string, unknown>;
   getCurrentSlide(): RevealSlide;
   addEventListener(event: string, callback: (e: Event) => void): void;
+  removeEventListener?(event: string, callback: (e: Event) => void): void;
   availableFragments(): { prev: boolean; next: boolean };
 }
 
@@ -94,30 +98,54 @@ const DEFAULT_TREK_COLOR = '#e05252';
 const DEFAULT_TREK_WIDTH = 4;
 const CONTAINER_CLASS = 'maplibre-gl-container';
 const STYLE_TAG_ID = 'maplibre-gl-plugin-styles';
+let activePluginCount = 0;
 
 // ---------------------------------------------------------------------------
 // Plugin factory
 // ---------------------------------------------------------------------------
 
-function createPlugin() {
+function mergeOptions(
+  defaults: PluginOptions,
+  revealConfig: PluginOptions | undefined,
+): PluginOptions {
+  return {
+    ...defaults,
+    ...revealConfig,
+  };
+}
+
+function createPlugin(factoryOptions: PluginOptions = {}) {
   let deck: RevealApi;
-  let options: PluginOptions;
+  let options: PluginOptions = { ...factoryOptions };
+  let destroyed = false;
+  const managedSlides = new Set<RevealSlide>();
+  let onReady: ((e: Event) => void) | undefined;
 
   // ---- CSS injection -------------------------------------------------------
 
   function injectStyles(): void {
-    if (document.getElementById(STYLE_TAG_ID)) return;
-    const style = document.createElement('style');
-    style.id = STYLE_TAG_ID;
-    // In slide mode:
-    //   - overflow:hidden clips MapLibre controls at the slide edge
-    //   - content siblings are lifted above the map via z-index
-    style.textContent = [
-      `.reveal .slides section[data-maplibre]{overflow:hidden;}`,
-      `.reveal .slides section[data-maplibre]>*:not(.${CONTAINER_CLASS})`,
-      `{position:relative;z-index:1;}`,
-    ].join('');
-    document.head.appendChild(style);
+    const existing = document.getElementById(STYLE_TAG_ID);
+    if (!existing) {
+      const style = document.createElement('style');
+      style.id = STYLE_TAG_ID;
+      // In slide mode:
+      //   - overflow:hidden clips MapLibre controls at the slide edge
+      //   - content siblings are lifted above the map via z-index
+      style.textContent = [
+        `.reveal .slides section[data-maplibre]{overflow:hidden;}`,
+        `.reveal .slides section[data-maplibre]>*:not(.${CONTAINER_CLASS})`,
+        `{position:relative;z-index:1;}`,
+      ].join('');
+      document.head.appendChild(style);
+    }
+
+    activePluginCount += 1;
+  }
+
+  function releaseStyles(): void {
+    activePluginCount = Math.max(0, activePluginCount - 1);
+    if (activePluginCount > 0) return;
+    document.getElementById(STYLE_TAG_ID)?.remove();
   }
 
   // ---- Trek helpers --------------------------------------------------------
@@ -151,27 +179,29 @@ function createPlugin() {
 
   function ensureTreks(map: MaplibreMap, treks: TrekSpec[]): void {
     const add = () => { for (const t of treks) addTrek(map, t); };
-    if (map.isStyleLoaded()) {
-      add();
-    } else {
-      map.once('styledata', add);
-    }
+    if (map.isStyleLoaded()) add();
+    else map.once('styledata', add);
   }
 
   // ---- Map lifecycle -------------------------------------------------------
+
+  function parseSlideMapConfig(slide: RevealSlide): SlideMapConfig | null {
+    const raw = slide.getAttribute('data-maplibre');
+    return raw ? (JSON.parse(raw) as SlideMapConfig) : null;
+  }
+
+  function resolveMapMode(slide: RevealSlide): MapMode {
+    return parseSlideMapConfig(slide)?.mode ?? options.mode ?? 'slide';
+  }
 
   function createContainer(slide: RevealSlide): HTMLDivElement {
     const container = document.createElement('div');
     container.className = CONTAINER_CLASS;
 
-    if (options.mode === 'fullpage') {
-      // Fixed to the viewport, behind everything (z-index:-1).
-      // Hidden until this slide becomes active.
-      container.style.cssText =
-        'position:fixed;inset:0;z-index:-1;display:none;';
+    if (resolveMapMode(slide) === 'fullpage') {
+      container.style.cssText = 'position:fixed;inset:0;z-index:-1;display:none;';
       document.body.prepend(container);
     } else {
-      // Absolute within the slide, behind slide content (z-index:0).
       container.style.cssText = 'position:absolute;inset:0;z-index:0;';
       slide.appendChild(container);
     }
@@ -190,46 +220,60 @@ function createPlugin() {
 
     options.onMapCreated?.(map, slide);
 
-    // Once loaded: resize (container may have been hidden at init time)
-    // and jump to position if this is the active slide.
-    map.once('load', () => {
-      map.resize();
-      if (deck.getCurrentSlide() !== slide) return;
-
-      const trekAttr = slide.getAttribute('data-maplibre-trek');
-      if (trekAttr) ensureTreks(map, parseTreks(trekAttr));
-
-      const position = resolveCurrentPosition();
-      if (position) jumpToPosition(map, position);
-    });
-
     return map;
   }
 
   function initSlides(): void {
     const slides = document.querySelectorAll<RevealSlide>('[data-maplibre]');
     for (const slide of slides) {
+      managedSlides.add(slide);
       slide.maplibreMap = createMap(slide);
-    }
-
-    // Show the first active map (fullpage mode needs explicit show).
-    if (options.mode === 'fullpage') {
-      showFullpageContainer(deck.getCurrentSlide());
     }
   }
 
-  // ---- Fullpage container visibility ---------------------------------------
+  // ---- Active-slide activation ---------------------------------------------
 
-  function showFullpageContainer(currentSlide: RevealSlide): void {
-    // Hide all fullpage containers.
-    for (const el of document.querySelectorAll<HTMLElement>(`.${CONTAINER_CLASS}`)) {
-      el.style.display = 'none';
+  /**
+   * Make the map for `slide` fill its container and jump/fly to the correct
+   * camera position. Pass `animate: true` for slide-change transitions.
+   *
+   * If the container has no layout size yet (slide still display:none while
+   * Reveal transitions it in), a ResizeObserver defers the work until the
+   * browser has computed real dimensions.
+   */
+  function activateSlide(slide: RevealSlide, animate = false): void {
+    if (resolveMapMode(slide) === 'fullpage') {
+      for (const el of document.querySelectorAll<HTMLElement>(`.${CONTAINER_CLASS}`)) {
+        el.style.display = 'none';
+      }
+      if (slide.maplibreContainer) slide.maplibreContainer.style.display = 'block';
     }
-    // Show the one belonging to the active slide, if any.
-    const container = currentSlide.maplibreContainer;
-    if (container) {
-      container.style.display = 'block';
-      currentSlide.maplibreMap?.resize();
+
+    const map = slide.maplibreMap;
+    const container = slide.maplibreContainer;
+    if (!map || !container) return;
+
+    const applyCamera = () => {
+      map.resize();
+      const trekAttr = slide.getAttribute('data-maplibre-trek');
+      if (trekAttr) ensureTreks(map, parseTreks(trekAttr));
+      const position = resolveCurrentPosition();
+      if (!position) return;
+      if (animate) flyToPosition(map, position);
+      else jumpToPosition(map, position);
+    };
+
+    if (container.offsetWidth > 0) {
+      applyCamera();
+    } else {
+      // Container is not yet laid out (Reveal.js is still transitioning the
+      // slide in from display:none). Wait for the first non-zero size.
+      const ro = new ResizeObserver(() => {
+        if (container.offsetWidth === 0) return;
+        ro.disconnect();
+        applyCamera();
+      });
+      ro.observe(container);
     }
   }
 
@@ -244,7 +288,6 @@ function createPlugin() {
     };
   }
 
-  /** Instant camera move — used on first map load. */
   function jumpToPosition(map: MaplibreMap, position: MapPosition): void {
     try {
       map.jumpTo(buildCameraOptions(position));
@@ -253,7 +296,6 @@ function createPlugin() {
     }
   }
 
-  /** Animated camera move — used for slide / fragment transitions. */
   function flyToPosition(map: MaplibreMap, position: MapPosition): void {
     const flyOptions: FlyToOptions = {
       ...buildCameraOptions(position),
@@ -270,7 +312,6 @@ function createPlugin() {
   function resolveCurrentPosition(): MapPosition | null {
     const slide = deck.getCurrentSlide();
 
-    // Active fragment overrides the slide-level position.
     const activeFragment = slide.querySelector<HTMLElement>(
       '.fragment.current-fragment[data-maplibre-to]',
     );
@@ -283,56 +324,61 @@ function createPlugin() {
     const { prev, next } = deck.availableFragments();
     if (prev && !next) return null;
 
-    const raw = slide.getAttribute('data-maplibre');
-    return raw ? (JSON.parse(raw) as MapPosition) : null;
-  }
-
-  function goCurrentMapPosition(): void {
-    const slide = deck.getCurrentSlide();
-    const map = slide.maplibreMap;
-    if (!map) return;
-
-    const position = resolveCurrentPosition();
-    if (position) flyToPosition(map, position);
+    return parseSlideMapConfig(slide);
   }
 
   // ---- Reveal.js event handlers -------------------------------------------
 
   function onSlideChanged(event: Event): void {
     const { currentSlide } = event as SlideChangedEvent;
-
-    if (options.mode === 'fullpage') {
-      showFullpageContainer(currentSlide);
-    }
-
-    const map = currentSlide.maplibreMap;
-    if (!map) return;
-
-    if (options.mode !== 'fullpage') map.resize();
-
-    const trekAttr = currentSlide.getAttribute('data-maplibre-trek');
-    if (trekAttr) ensureTreks(map, parseTreks(trekAttr));
-
-    goCurrentMapPosition();
+    activateSlide(currentSlide, true);
   }
 
   function onFragmentShown(event: Event): void {
     const { fragment } = event as FragmentEvent;
     if (!fragment.hasAttribute('data-maplibre-to')) return;
-    goCurrentMapPosition();
+    const map = deck.getCurrentSlide().maplibreMap;
+    if (!map) return;
+    const position = resolveCurrentPosition();
+    if (position) flyToPosition(map, position);
   }
 
   function onFragmentHidden(event: Event): void {
     const { fragment } = event as FragmentEvent;
     if (!fragment.hasAttribute('data-maplibre-to')) return;
-    goCurrentMapPosition();
+    const map = deck.getCurrentSlide().maplibreMap;
+    if (!map) return;
+    const position = resolveCurrentPosition();
+    if (position) flyToPosition(map, position);
+  }
+
+  function destroy(): void {
+    if (destroyed) return;
+    destroyed = true;
+
+    deck.removeEventListener?.('slidechanged', onSlideChanged);
+    deck.removeEventListener?.('fragmentshown', onFragmentShown);
+    deck.removeEventListener?.('fragmenthidden', onFragmentHidden);
+    if (onReady) deck.removeEventListener?.('ready', onReady);
+
+    for (const slide of managedSlides) {
+      slide.maplibreMap?.remove();
+      slide.maplibreMap = undefined;
+      slide.maplibreContainer?.remove();
+      slide.maplibreContainer = undefined;
+    }
+    managedSlides.clear();
+
+    releaseStyles();
   }
 
   // ---- Plugin entry point --------------------------------------------------
 
   function init(revealDeck: RevealApi): void {
     deck = revealDeck;
-    options = (deck.getConfig()['maplibre'] as PluginOptions | undefined) ?? {};
+    const revealConfig = deck.getConfig().maplibre as PluginOptions | undefined;
+    options = mergeOptions(factoryOptions, revealConfig);
+    destroyed = false;
 
     injectStyles();
     initSlides();
@@ -340,12 +386,29 @@ function createPlugin() {
     deck.addEventListener('slidechanged', onSlideChanged);
     deck.addEventListener('fragmentshown', onFragmentShown);
     deck.addEventListener('fragmenthidden', onFragmentHidden);
+
+    // 'ready' fires after Reveal has finished its own layout — this is the
+    // correct moment to resize and position the first slide's map.
+    // Using a map.loaded() guard ensures we only act once the style is ready;
+    // if load hasn't fired yet, the map.once('load') handler above will cover it.
+    onReady = () => {
+      const slide = deck.getCurrentSlide();
+      const map = slide.maplibreMap;
+      if (map?.loaded()) {
+        activateSlide(slide);
+      } else {
+        // Style still loading — wire up a one-shot handler so activation
+        // happens as soon as the map is ready (after Reveal layout is stable).
+        map?.once('load', () => activateSlide(slide));
+      }
+    };
+    deck.addEventListener('ready', onReady);
   }
 
   return {
     id: 'maplibre-gl',
     init,
-    /** Returns the MapLibre map instance attached to a slide element, if any. */
+    destroy,
     getMap(slide: HTMLElement): MaplibreMap | undefined {
       return (slide as RevealSlide).maplibreMap;
     },

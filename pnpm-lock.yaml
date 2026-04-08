@@ -7,11 +7,13 @@ settings:
 importers:
 
   .:
-    dependencies:
+    devDependencies:
       maplibre-gl:
         specifier: ^5.22.0
         version: 5.22.0
-    devDependencies:
+      reveal.js:
+        specifier: ^6.0.0
+        version: 6.0.0
       typescript:
         specifier: ~6.0.2
         version: 6.0.2
@@ -327,6 +329,9 @@ packages:
 
   resolve-protobuf-schema@2.1.0:
     resolution: {integrity: sha512-kI5ffTiZWmJaS/huM8wZfEMer1eRd7oJQhDuxeCLe3t7N7mX3z94CN0xPxBQxFYQTSNz9T0i+v6inKqSdK8xrQ==}
+
+  reveal.js@6.0.0:
+    resolution: {integrity: sha512-RayDr1FL3Jglnf6p9xHGJ0U18va96PiuLs/JHnd1cdDOXvC+3lsXKe6ujl7PX0pvnhNW2Tpqnr6PEKpJVO2exw==}
 
   rolldown@1.0.0-rc.12:
     resolution: {integrity: sha512-yP4USLIMYrwpPHEFB5JGH1uxhcslv6/hL0OyvTuY+3qlOSJvZ7ntYnoWpehBxufkgN0cvXxppuTu5hHa/zPh+A==}
@@ -654,6 +659,8 @@ snapshots:
   resolve-protobuf-schema@2.1.0:
     dependencies:
       protocol-buffers-schema: 3.6.1
+
+  reveal.js@6.0.0: {}
 
   rolldown@1.0.0-rc.12(@emnapi/core@1.9.2)(@emnapi/runtime@1.9.2):
     dependencies:

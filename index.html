@@ -82,16 +82,17 @@
   </div>
 
   <!-- Reveal.js core -->
-  <script src="https://cdn.jsdelivr.net/npm/reveal.js@5/dist/reveal.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/reveal.js@6/dist/reveal.js"></script>
 
   <!-- Plugin (loaded via Vite dev server from src/) -->
   <script type="module">
-    import createMaplibrePlugin from './src/maplibre-gl.ts';
+    import createMaplibrePlugin from './src/index.ts';
 
     Reveal.initialize({
       hash: true,
-      // Plugin options – override the default style here if needed.
-      // maplibre: { style: 'https://...' },
+      maplibre: {
+        style: 'https://demotiles.maplibre.org/style.json',
+      },
       plugins: [createMaplibrePlugin()],
     });
   </script>

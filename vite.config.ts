@@ -2,21 +2,15 @@ import { defineConfig } from 'vite';
 
 export default defineConfig({
   build: {
-    emptyOutDir: true,
+    emptyOutDir: false,
     lib: {
-      entry: 'src/maplibre-gl.ts',
-      name: 'RevealMaplibreGl',
-      fileName: 'reveal-maplibre-gl',
-      formats: ['es', 'umd'],
+      entry: 'src/index.ts',
+      fileName: (format) => `reveal-maplibre-gl.${format === 'es' ? 'js' : 'cjs'}`,
+      formats: ['es', 'cjs'],
     },
     rollupOptions: {
       // Consumers are expected to have maplibre-gl bundled themselves.
       external: ['maplibre-gl'],
-      output: {
-        globals: {
-          'maplibre-gl': 'maplibregl',
-        },
-      },
     },
   },
 });

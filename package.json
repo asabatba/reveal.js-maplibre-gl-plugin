@@ -5,29 +5,51 @@
   "description": "A reveal.js plugin for MapLibre GL JS maps",
   "keywords": ["reveal.js", "maplibre", "maps", "plugin"],
   "license": "MIT",
-  "main": "./dist/reveal-maplibre-gl.umd.cjs",
+  "main": "./dist/reveal-maplibre-gl.cjs",
   "module": "./dist/reveal-maplibre-gl.js",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
+      "types": "./dist/index.d.ts",
       "import": "./dist/reveal-maplibre-gl.js",
-      "require": "./dist/reveal-maplibre-gl.umd.cjs"
+      "require": "./dist/reveal-maplibre-gl.cjs"
     },
     "./bundled": {
       "import": "./dist/reveal-maplibre-gl.bundled.js"
-    }
+    },
+    "./bundled.css": "./dist/reveal-maplibre-gl.bundled.css"
   },
+  "sideEffects": [
+    "./dist/reveal-maplibre-gl.bundled.css"
+  ],
   "files": ["dist"],
   "scripts": {
+    "clean": "node --eval \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
     "dev": "vite",
-    "build": "tsc --noEmit && vite build && vite build --config vite.config.bundled.ts",
+    "check": "tsc --noEmit",
+    "build:types": "tsc --project tsconfig.build.json",
+    "build:lib": "vite build",
+    "build:bundled": "vite build --config vite.config.bundled.ts",
+    "build": "npm run clean && npm run check && npm run build:types && npm run build:lib && npm run build:bundled",
+    "pack:check": "npm pack --dry-run",
     "preview": "vite preview"
   },
   "peerDependencies": {
-    "maplibre-gl": ">=4"
+    "maplibre-gl": ">=4",
+    "reveal.js": ">=5 <7"
   },
   "devDependencies": {
     "maplibre-gl": "^5.22.0",
+    "reveal.js": "^6.0.0",
     "typescript": "~6.0.2",
     "vite": "^8.0.4"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/asabatba/reveal.js-maplibre-gl-plugin.git"
+  },
+  "bugs": {
+    "url": "https://github.com/asabatba/reveal.js-maplibre-gl-plugin/issues"
+  },
+  "homepage": "https://github.com/asabatba/reveal.js-maplibre-gl-plugin#readme"
 }

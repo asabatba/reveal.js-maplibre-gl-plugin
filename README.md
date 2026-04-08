@@ -1,87 +1,132 @@
-# reveal.js · MapLibre GL plugin
+# reveal.js MapLibre GL plugin
 
-A [reveal.js](https://github.com/hakimel/reveal.js) plugin that embeds interactive [MapLibre GL JS](https://maplibre.org/maplibre-gl-js/docs/) maps into slides. No API token required.
+A [reveal.js](https://github.com/hakimel/reveal.js) plugin for embedding interactive [MapLibre GL JS](https://maplibre.org/) maps in slides.
 
-Built with TypeScript and bundled via Vite. Based on the original [reveal.js-mapbox-gl-plugin](https://github.com/lipov3cz3k/reveal.js-mapbox-gl-plugin) by Tomas Lipovsky.
+The package is structured for npm-first usage:
+
+- The root package exports the plugin for bundlers and includes TypeScript declarations.
+- `maplibre-gl` stays a peer dependency in the library build.
+- A separate standalone bundle is published for direct browser usage.
+
+Based on the original [reveal.js-mapbox-gl-plugin](https://github.com/lipov3cz3k/reveal.js-mapbox-gl-plugin) by Tomas Lipovsky.
 
 ## Installation
 
+### npm / pnpm / bun
+
 ```bash
-npm install reveal.js-maplibre-gl-plugin maplibre-gl
-# or
-pnpm add reveal.js-maplibre-gl-plugin maplibre-gl
+npm install reveal.js reveal.js-maplibre-gl-plugin maplibre-gl
+```
+
+```bash
+pnpm add reveal.js reveal.js-maplibre-gl-plugin maplibre-gl
 ```
 
 ## Usage
 
-Import the plugin and the MapLibre CSS, then pass the plugin factory to `Reveal.initialize`:
+### Bundler usage
 
-```javascript
+Import the plugin from the package root and import MapLibre's CSS explicitly:
+
+```ts
+import Reveal from 'reveal.js';
 import createMaplibrePlugin from 'reveal.js-maplibre-gl-plugin';
 import 'maplibre-gl/dist/maplibre-gl.css';
 
-Reveal.initialize({
-  plugins: [createMaplibrePlugin()],
+const maplibrePlugin = createMaplibrePlugin({
+  mode: 'slide',
 });
-```
 
-### Plugin options
-
-Pass options via the `maplibre` key in the Reveal config:
-
-```javascript
 Reveal.initialize({
+  plugins: [maplibrePlugin],
   maplibre: {
-    // Any MapLibre style URL or style spec object.
-    // Defaults to the free MapLibre demo tiles.
     style: 'https://demotiles.maplibre.org/style.json',
-
-    // 'slide' (default): map fills the slide's bounding box.
-    // 'fullpage': map is fixed to the full browser viewport behind the slides.
-    mode: 'slide',
-
-    // Called once per map after creation (before the style loads).
-    onMapCreated(map, slide) {
-      map.addControl(new maplibregl.NavigationControl());
-    },
   },
-  plugins: [createMaplibrePlugin()],
 });
 ```
+
+Plugin options can come from two places:
+
+- `createMaplibrePlugin(options)` provides factory defaults.
+- `Reveal.initialize({ maplibre: ... })` provides deck-level config and overrides the factory defaults.
+
+Per-slide `data-maplibre.mode` still overrides both.
+
+### Standalone browser usage
+
+Use the published standalone assets when you want to load the plugin directly in the browser:
+
+```html
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@6/dist/reveal.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@6/dist/theme/black.css">
+<link rel="stylesheet" href="https://unpkg.com/reveal.js-maplibre-gl-plugin/dist/reveal-maplibre-gl.bundled.css">
+
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@6/dist/reveal.js"></script>
+<script type="module">
+  import createMaplibrePlugin from 'https://unpkg.com/reveal.js-maplibre-gl-plugin/dist/reveal-maplibre-gl.bundled.js';
+
+  Reveal.initialize({
+    plugins: [createMaplibrePlugin()],
+    maplibre: {
+      style: 'https://demotiles.maplibre.org/style.json',
+    },
+  });
+</script>
+```
+
+For a plain `<script>` flow, the bundled IIFE also exposes `window.RevealMaplibreGl`.
+
+## Plugin API
+
+### `createMaplibrePlugin(options?: PluginOptions)`
+
+Creates a reveal.js plugin instance.
+
+```ts
+import type { PluginOptions } from 'reveal.js-maplibre-gl-plugin';
+```
+
+`PluginOptions`:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `style` | `string \| StyleSpecification` | MapLibre style URL or inline style spec. Defaults to the MapLibre demo style. |
+| `mode` | `'slide' \| 'fullpage'` | Default layout mode for maps in the deck. |
+| `onMapCreated` | `(map, slide) => void` | Called once per slide map after creation. |
+
+The plugin instance exposes:
+
+- `id`
+- `init(reveal)`
+- `destroy()`
+- `getMap(slideEl)`
 
 ## Slide configuration
 
-### Basic map slide
-
-Add `data-maplibre` to a `<section>` with a JSON camera position. The map fills the slide background.
+### Basic slide
 
 ```html
-<section data-maplibre='{"center": [2.17, 41.38], "zoom": 12}'>
+<section data-maplibre='{"center":[2.17,41.38],"zoom":12}'>
   <h2>Barcelona</h2>
 </section>
 ```
 
-All camera fields are optional and fall back to sensible defaults:
+### Per-slide mode override
 
-| Field     | Type         | Default  | Description            |
-|-----------|--------------|----------|------------------------|
-| `center`  | `[lon, lat]` | `[0, 0]` | Map centre             |
-| `zoom`    | number       | `10`     | Zoom level             |
-| `bearing` | number       | `0`      | Rotation in degrees    |
-| `pitch`   | number       | `0`      | Tilt in degrees        |
-| `speed`   | number       | `1.2`    | Fly-to animation speed |
-| `curve`   | number       | `1.42`   | Fly-to animation curve |
+```html
+<section data-maplibre='{"center":[2.17,41.38],"zoom":12,"mode":"fullpage"}'>
+  <h2>Barcelona</h2>
+</section>
+```
 
 ### Fragment-driven camera moves
 
-Attach `data-maplibre-to` to fragment elements to fly the camera when the fragment is shown or hidden:
-
 ```html
-<section data-maplibre='{"center": [2.17, 41.38], "zoom": 12}'>
-  <p class="fragment" data-maplibre-to='{"center": [2.18, 41.40], "zoom": 15, "pitch": 60}'>
-    Park Güell
+<section data-maplibre='{"center":[2.17,41.38],"zoom":12}'>
+  <p class="fragment" data-maplibre-to='{"center":[2.18,41.40],"zoom":15,"pitch":60}'>
+    Park Guell
   </p>
-  <p class="fragment" data-maplibre-to='{"center": [2.15, 41.38], "zoom": 15}'>
+  <p class="fragment" data-maplibre-to='{"center":[2.15,41.38],"zoom":15}'>
     Camp Nou
   </p>
 </section>
@@ -89,60 +134,52 @@ Attach `data-maplibre-to` to fragment elements to fly the camera when the fragme
 
 ### GeoJSON track overlay
 
-Add `data-maplibre-trek` with a `TrekSpec` JSON object to draw a line layer on the map. Pass an array for multiple tracks.
-
 ```html
-<!-- Single track -->
 <section
-  data-maplibre='{"center": [37.30, -0.16], "zoom": 9}'
-  data-maplibre-trek='{"url": "data/route.geojson", "color": "#e05252", "width": 4}'
+  data-maplibre='{"center":[37.30,-0.16],"zoom":9}'
+  data-maplibre-trek='{"url":"data/route.geojson","color":"#e05252","width":4}'
 >
-  <h2>Mt. Kenya expedition</h2>
-  <p class="fragment" data-maplibre-to='{"center": [37.02, -0.17], "zoom": 14}'>
-    Base camp
-  </p>
+  <h2>Route</h2>
 </section>
-
-<!-- Multiple tracks -->
-<section
-  data-maplibre='{"center": [10.0, 47.0], "zoom": 6}'
-  data-maplibre-trek='[{"url": "data/day1.geojson"}, {"url": "data/day2.geojson", "color": "steelblue"}]'
-></section>
 ```
 
-`TrekSpec` fields:
+`data-maplibre` supports these fields:
 
-| Field   | Type   | Default     | Description           |
-|---------|--------|-------------|-----------------------|
-| `url`   | string | —           | URL to a GeoJSON file |
-| `color` | string | `"#e05252"` | Line colour           |
-| `width` | number | `4`         | Line width in pixels  |
+| Field | Type | Default |
+| --- | --- | --- |
+| `center` | `[lon, lat]` | `[0, 0]` |
+| `zoom` | `number` | `10` |
+| `bearing` | `number` | `0` |
+| `pitch` | `number` | `0` |
+| `speed` | `number` | `1.2` |
+| `curve` | `number` | `1.42` |
+| `mode` | `'slide' \| 'fullpage'` | Deck `maplibre.mode` or `'slide'` |
 
-### Accessing the map instance
+`data-maplibre-trek` accepts either one `TrekSpec` or an array:
 
-The plugin instance exposes `getMap(slideEl)` for adding custom layers or controls:
-
-```javascript
-const plugin = createMaplibrePlugin({
-  onMapCreated(map, slide) {
-    // called once per slide map, right after creation
-    map.addControl(new maplibregl.NavigationControl());
-  },
-});
-
-Reveal.initialize({ plugins: [plugin] });
-
-// Later — e.g. in a slidechanged handler:
-const map = plugin.getMap(Reveal.getCurrentSlide());
-```
+| Field | Type | Default |
+| --- | --- | --- |
+| `url` | `string` | required |
+| `color` | `string` | `#e05252` |
+| `width` | `number` | `4` |
 
 ## Development
 
 ```bash
 pnpm install
-pnpm dev      # start Vite dev server with the demo presentation
-pnpm build    # type-check + build the library to dist/
+pnpm dev
+pnpm check
+pnpm build
+pnpm pack:check
 ```
+
+The build emits:
+
+- `dist/reveal-maplibre-gl.js` for ESM consumers
+- `dist/reveal-maplibre-gl.cjs` for CommonJS consumers
+- `dist/index.d.ts` and related declaration files
+- `dist/reveal-maplibre-gl.bundled.js` and `dist/reveal-maplibre-gl.bundled.iife.js` for standalone browser usage
+- `dist/reveal-maplibre-gl.bundled.css` for the standalone bundle
 
 ## License
 

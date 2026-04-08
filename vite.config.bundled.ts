@@ -11,7 +11,7 @@ export default defineConfig({
     // The lib build runs first and clears dist/; this one must not wipe it.
     emptyOutDir: false,
     lib: {
-      entry: 'src/maplibre-gl.ts',
+      entry: 'src/bundled.ts',
       name: 'RevealMaplibreGl',
       fileName: 'reveal-maplibre-gl.bundled',
       // ES module for <script type="module"> usage.
