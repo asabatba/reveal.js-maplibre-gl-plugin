@@ -1,0 +1,33 @@
+{
+  "name": "reveal.js-maplibre-gl-plugin",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "A reveal.js plugin for MapLibre GL JS maps",
+  "keywords": ["reveal.js", "maplibre", "maps", "plugin"],
+  "license": "MIT",
+  "main": "./dist/reveal-maplibre-gl.umd.cjs",
+  "module": "./dist/reveal-maplibre-gl.js",
+  "exports": {
+    ".": {
+      "import": "./dist/reveal-maplibre-gl.js",
+      "require": "./dist/reveal-maplibre-gl.umd.cjs"
+    },
+    "./bundled": {
+      "import": "./dist/reveal-maplibre-gl.bundled.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build && vite build --config vite.config.bundled.ts",
+    "preview": "vite preview"
+  },
+  "peerDependencies": {
+    "maplibre-gl": ">=4"
+  },
+  "devDependencies": {
+    "maplibre-gl": "^5.22.0",
+    "typescript": "~6.0.2",
+    "vite": "^8.0.4"
+  }
+}
