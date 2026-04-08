@@ -1,7 +1,9 @@
 import {
   type CameraOptions,
+  type FitBoundsOptions,
   type FlyToOptions,
   type LayerSpecification,
+  type LngLatBoundsLike,
   Map as MaplibreMap,
   type StyleSpecification,
 } from 'maplibre-gl';
@@ -16,6 +18,10 @@ export interface MapPosition {
   bearing?: number;
   zoom?: number;
   pitch?: number;
+  /** Bounds to fit instead of using a single center/zoom camera position. */
+  bounds?: LngLatBoundsLike;
+  /** Extra MapLibre fitBounds options applied when `bounds` is present. */
+  fitBoundsOptions?: FitBoundsOptions;
   /** Fly-to animation speed multiplier (default 1.2). Only used for transitions. */
   speed?: number;
   /** Fly-to animation curve (default 1.42). Only used for transitions. */
@@ -288,8 +294,23 @@ function createPlugin(factoryOptions: PluginOptions = {}) {
     };
   }
 
+  function buildFitBoundsOptions(position: MapPosition): FitBoundsOptions {
+    return {
+      ...position.fitBoundsOptions,
+      bearing: position.bearing ?? position.fitBoundsOptions?.bearing ?? 0,
+      pitch: position.pitch ?? position.fitBoundsOptions?.pitch ?? 0,
+    };
+  }
+
   function jumpToPosition(map: MaplibreMap, position: MapPosition): void {
     try {
+      if (position.bounds) {
+        map.fitBounds(position.bounds, {
+          ...buildFitBoundsOptions(position),
+          duration: 0,
+        });
+        return;
+      }
       map.jumpTo(buildCameraOptions(position));
     } catch (err) {
       console.error('[RevealMaplibreGl] jumpTo error:', err);
@@ -297,6 +318,19 @@ function createPlugin(factoryOptions: PluginOptions = {}) {
   }
 
   function flyToPosition(map: MaplibreMap, position: MapPosition): void {
+    if (position.bounds) {
+      try {
+        map.fitBounds(position.bounds, {
+          ...buildFitBoundsOptions(position),
+          speed: position.speed ?? position.fitBoundsOptions?.speed ?? 1.2,
+          curve: position.curve ?? position.fitBoundsOptions?.curve ?? 1.42,
+        });
+      } catch (err) {
+        console.error('[RevealMaplibreGl] fitBounds error:', err);
+      }
+      return;
+    }
+
     const flyOptions: FlyToOptions = {
       ...buildCameraOptions(position),
       speed: position.speed ?? 1.2,

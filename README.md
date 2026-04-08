@@ -119,6 +119,26 @@ The plugin instance exposes:
 </section>
 ```
 
+### Fit bounds
+
+Use `bounds` when you want MapLibre to frame an area instead of targeting a single center/zoom pair.
+
+```html
+<section
+  data-maplibre='{
+    "bounds":[[-79,43],[-73,45]],
+    "fitBoundsOptions":{
+      "padding":{"top":10,"right":5,"bottom":25,"left":15},
+      "maxZoom":8
+    }
+  }'
+>
+  <h2>Region overview</h2>
+</section>
+```
+
+When `bounds` is present, the plugin uses `map.fitBounds(...)` and ignores the top-level `center`/`zoom` camera target.
+
 ### Fragment-driven camera moves
 
 ```html
@@ -130,6 +150,20 @@ The plugin instance exposes:
     Camp Nou
   </p>
 </section>
+```
+
+Fragments can also use `bounds`:
+
+```html
+<p
+  class="fragment"
+  data-maplibre-to='{
+    "bounds":[[2.10,41.35],[2.22,41.44]],
+    "fitBoundsOptions":{"padding":40}
+  }'
+>
+  Show the whole city
+</p>
 ```
 
 ### GeoJSON track overlay
@@ -151,6 +185,8 @@ The plugin instance exposes:
 | `zoom` | `number` | `10` |
 | `bearing` | `number` | `0` |
 | `pitch` | `number` | `0` |
+| `bounds` | `[[lon, lat], [lon, lat]]` | unset |
+| `fitBoundsOptions` | `FitBoundsOptions` | unset |
 | `speed` | `number` | `1.2` |
 | `curve` | `number` | `1.42` |
 | `mode` | `'slide' \| 'fullpage'` | Deck `maplibre.mode` or `'slide'` |
